@@ -32,10 +32,6 @@ jobs:
         
     - name: Install dependencies
       run: npm ci
-      
-    - name: Run tests (if you have any)
-      run: npm test
-      continue-on-error: true
 
     - name: Bootstrap CDK
       run: npx cdk bootstrap aws://${{ secrets.AWS_ACCOUNT_ID }}/${{ secrets.AWS_REGION }}
