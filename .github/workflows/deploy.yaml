@@ -1,0 +1,54 @@
+name: Deploy CDK Stack
+
+on:
+  pull_request:
+    branches: [ main ]
+    types: [ closed ]
+  workflow_dispatch:
+
+env:
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+  
+jobs:
+  deploy:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+        
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ secrets.AWS_REGION }}
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Run tests (if you have any)
+      run: npm test
+      continue-on-error: true
+
+    - name: Bootstrap CDK
+      run: npx cdk bootstrap aws://${{ secrets.AWS_ACCOUNT_ID }}/${{ secrets.AWS_REGION }}
+      
+    - name: CDK Synth
+      run: npx cdk synth
+      
+    - name: CDK Diff
+      run: npx cdk diff --all
+      
+    - name: CDK Deploy
+      run: |
+        npx cdk deploy --all \
+          --require-approval never \
+          --force \
+          --strict
