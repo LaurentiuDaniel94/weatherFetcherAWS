@@ -2,35 +2,34 @@
 import os
 import json
 import boto3
-import requests
+from urllib import request, parse
+from urllib.error import URLError
 from datetime import datetime
 from typing import Dict, Any
 
-# Cluj-Napoca coordinates
-DEFAULT_LAT = 46.7712
-DEFAULT_LON = 23.6236
-
-def get_weather_data(api_key: str, lat: float = DEFAULT_LAT, lon: float = DEFAULT_LON) -> Dict[str, Any]:
-    """Fetch weather data from OpenWeather API using coordinates"""
-    url = f"https://api.openweathermap.org/data/2.5/weather"
+def get_weather_data(api_key: str, lat: float = 46.7712, lon: float = 23.6236) -> Dict[str, Any]:
+    """Fetch weather data from OpenWeather API using urllib"""
+    base_url = "https://api.openweathermap.org/data/2.5/weather"
     
+    # Build query parameters
     params = {
         "lat": lat,
         "lon": lon,
         "appid": api_key,
-        "units": "metric"  # For Celsius
+        "units": "metric"
     }
     
+    # Create full URL with parameters
+    url = f"{base_url}?{parse.urlencode(params)}"
+    
     try:
-        response = requests.get(url, params=params)
-        response.raise_for_status()
-        return response.json()
-    except requests.RequestException as e:
+        with request.urlopen(url) as response:
+            return json.loads(response.read().decode('utf-8'))
+    except URLError as e:
         print(f"Error fetching weather data: {str(e)}")
         raise
 
 def format_weather_message(weather_data: Dict[str, Any]) -> Dict[str, Any]:
-    """Format raw weather data into our message structure"""
     return {
         "location": weather_data["name"],
         "timestamp": int(datetime.now().timestamp()),
@@ -48,22 +47,24 @@ def format_weather_message(weather_data: Dict[str, Any]) -> Dict[str, Any]:
 
 def lambda_handler(event, context):
     try:
+        # Get environment variables
+        api_key = os.environ['WEATHER_API_KEY']
+        queue_url = os.environ['QUEUE_URL']
+        
         # Initialize AWS SQS client
         sqs = boto3.client('sqs')
         
-        # Fetch weather data using coordinates
-        weather_data = get_weather_data(
-            api_key=os.environ['WEATHER_API_KEY']
-        )
+        # Fetch weather data
+        weather_data = get_weather_data(api_key)
         
         # Format the message
         message = format_weather_message(weather_data)
         
         # Send to SQS
         response = sqs.send_message(
-            QueueUrl=os.environ['QUEUE_URL'],
+            QueueUrl=queue_url,
             MessageBody=json.dumps(message),
-            MessageGroupId="weather-updates"  # Required for FIFO queue
+            MessageGroupId="weather-updates"
         )
         
         print(f"Weather data sent to queue: {message}")
