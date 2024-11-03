@@ -85,6 +85,7 @@ export class WeatherNotificationStack extends cdk.Stack {
         ]
     });
 
+    
    // Add Timestream permissions to processor Lambda
     processorLambdaRole.addToPolicy(new iam.PolicyStatement({
         actions: [
