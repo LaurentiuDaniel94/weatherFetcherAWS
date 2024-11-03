@@ -26,7 +26,8 @@ export class WeatherNotificationStack extends cdk.Stack {
     const deadLetterQueue = new sqs.Queue(this, "DeadLetterQueue", {
         queueName: "weather-dead-letter-queue",
         deliveryDelay: cdk.Duration.seconds(0),
-        retentionPeriod: cdk.Duration.days(1)
+        retentionPeriod: cdk.Duration.days(1),
+        fifo: true
     })
 
     const weatherQueue = new sqs.Queue(this, "WeatherQueue", {
