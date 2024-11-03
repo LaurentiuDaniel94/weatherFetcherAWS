@@ -45,7 +45,7 @@ def format_weather_message(weather_data: Dict[str, Any]) -> Dict[str, Any]:
         }
     }
 
-def lambda_handler(event, context):
+def handler(event, context):
     try:
         # Get environment variables
         api_key = os.environ['WEATHER_API_KEY']

@@ -89,7 +89,7 @@ def send_discord_message(notification: dict, webhook_url: str) -> None:
         print(f"Error sending to Discord: {str(e)}")
         raise
 
-def lambda_handler(event, context):
+def handler(event, context):
     DISCORD_WEBHOOK_URL = os.environ['DISCORD_WEBHOOK_URL']
     
     for record in event['Records']:
