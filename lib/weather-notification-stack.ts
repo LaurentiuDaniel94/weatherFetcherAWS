@@ -9,7 +9,6 @@ import * as iam from "aws-cdk-lib/aws-iam"
 import { Duration } from "aws-cdk-lib"
 import { SqsEventSource } from "aws-cdk-lib/aws-lambda-event-sources"
 import * as timestream from 'aws-cdk-lib/aws-timestream';
-import * as grafana from 'aws-cdk-lib/aws-grafana';
 
 
 export class WeatherNotificationStack extends cdk.Stack {
@@ -95,7 +94,6 @@ export class WeatherNotificationStack extends cdk.Stack {
     resources: [weatherTable.attrArn]
   }));
 
-
     const processorLambda = new lambda.Function(this, "ProcessorWeatherLambda", {
         runtime: lambda.Runtime.PYTHON_3_12,
         handler: "main.handler",
@@ -119,38 +117,5 @@ export class WeatherNotificationStack extends cdk.Stack {
         schedule: events.Schedule.rate(Duration.hours(1)), // Runs every hour
         targets: [new targets.LambdaFunction(fetcherLambda)]
       });
-
-      const grafanaRole = new iam.Role(this, 'GrafanaTimeStreamRole', {
-        assumedBy: new iam.ServicePrincipal('grafana.amazonaws.com'),
-      });
-      
-      // Add Timestream read permissions to Grafana role
-      grafanaRole.addToPolicy(new iam.PolicyStatement({
-        actions: [
-          'timestream:DescribeEndpoints',
-          'timestream:SelectValues',
-          'timestream:DescribeTable',
-          'timestream:ListMeasures',
-          'timestream:ListDatabases',
-          'timestream:ListTables'
-        ],
-        resources: ['*']  // Or be more specific with your Timestream ARN
-      }));
-      
-    // Create Managed Grafana Workspace
-    const workspace = new grafana.CfnWorkspace(this, 'WeatherGrafana', {
-        accountAccessType: 'CURRENT_ACCOUNT',
-        authenticationProviders: ['AWS_SSO'],  // Using IAM authentication
-        permissionType: 'SERVICE_MANAGED',
-        roleArn: grafanaRole.roleArn,
-        name: 'weather-dashboard'
-  });
-
-    // Output the Grafana URL
-    // Add Grafana URL to stack outputs
-    new cdk.CfnOutput(this, 'GrafanaURL', {
-        value: `https://${workspace.attrEndpoint}`,
-        description: 'URL for Grafana workspace'
-  });
 }
     }
