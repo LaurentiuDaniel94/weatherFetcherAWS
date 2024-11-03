@@ -140,7 +140,7 @@ export class WeatherNotificationStack extends cdk.Stack {
     // Create Managed Grafana Workspace
     const workspace = new grafana.CfnWorkspace(this, 'WeatherGrafana', {
         accountAccessType: 'CURRENT_ACCOUNT',
-        authenticationProviders: ['AWS-IAM'],  // Using IAM authentication
+        authenticationProviders: ['AWS_SSO'],  // Using IAM authentication
         permissionType: 'SERVICE_MANAGED',
         roleArn: grafanaRole.roleArn,
         name: 'weather-dashboard'
