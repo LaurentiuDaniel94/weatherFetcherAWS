@@ -5,7 +5,6 @@ import boto3
 from urllib import request
 from urllib.error import URLError
 from datetime import datetime
-from typing import Dict, Any
 
 class TimestreamWriter:
     def __init__(self):
@@ -13,16 +12,18 @@ class TimestreamWriter:
         self.database = os.environ['TIMESTREAM_DATABASE']
         self.table = os.environ['TIMESTREAM_TABLE']
 
-    def write_weather_data(self, weather_data: Dict[str, Any]):
+    def write_records(self, weather_data: dict):
+        """Write weather data to Timestream"""
         current_time = str(int(datetime.utcnow().timestamp() * 1000))
 
-        # Prepare common dimensions
+        # Common dimensions for all records
         common_dimensions = [
             {'Name': 'location', 'Value': weather_data['location']},
-            {'Name': 'condition', 'Value': weather_data['condition']}
+            {'Name': 'condition', 'Value': weather_data['condition']},
+            {'Name': 'description', 'Value': weather_data['description']}
         ]
 
-        # Prepare records
+        # Create records for different measurements
         records = [
             {
                 'Dimensions': common_dimensions,
@@ -60,17 +61,23 @@ class TimestreamWriter:
                 TableName=self.table,
                 Records=records
             )
-            print(f"Successfully wrote records to Timestream: {result}")
+            print(f"Successfully wrote records to Timestream for {weather_data['location']}")
+            return result
+        except self.write_client.exceptions.RejectedRecordsException as e:
+            print(f"Rejected records: {e}")
+            for rr in e.response["RejectedRecords"]:
+                print(f"Rejected record: {rr}")
+            raise
         except Exception as e:
             print(f"Error writing to Timestream: {str(e)}")
             raise
 
-def send_discord_message(notification: dict, webhook_url: str) -> None:
-    """Send formatted message to Discord"""
+def send_discord_message(notification: dict, webhook_url: str):
+    """Send weather notification to Discord"""
     embed = {
         "title": f"Weather Update for {notification['location']}",
         "description": notification['details'],
-        "color": 3447003,  # Blue color
+        "color": 3447003,
         "fields": [
             {
                 "name": "Condition",
@@ -83,7 +90,6 @@ def send_discord_message(notification: dict, webhook_url: str) -> None:
         }
     }
 
-    # Add alert fields if any
     for alert in notification['alerts']:
         embed["fields"].append({
             "name": "Alert",
@@ -112,19 +118,19 @@ def send_discord_message(notification: dict, webhook_url: str) -> None:
         raise
 
 def handler(event, context):
-    print(f"Received event: {json.dumps(event)}")
+    print(f"Processing event: {event}")
     timestream = TimestreamWriter()
-    
+
     for record in event['Records']:
         try:
-            # Parse message from SQS
+            # Parse weather data from SQS message
             weather_data = json.loads(record['body'])
-            
-            # Write to Timestream
-            timestream.write_weather_data(weather_data)
-            print(f"Weather data written to Timestream for {weather_data['location']}")
+            print(f"Processing weather data: {weather_data}")
 
-            # Prepare alerts
+            # Write to Timestream
+            timestream.write_records(weather_data)
+
+            # Prepare alerts for Discord
             alerts = []
             if weather_data['temperature'] > 30:
                 alerts.append(f"🌡️ High temperature alert: {weather_data['temperature']}°C")
@@ -134,12 +140,12 @@ def handler(event, context):
                 alerts.append(f"💨 High wind alert: {weather_data['wind_speed']} m/s")
             if weather_data['humidity'] > 80:
                 alerts.append(f"💧 High humidity alert: {weather_data['humidity']}%")
-            
+
             # Prepare Discord notification
             notification = {
                 'location': weather_data['location'],
                 'time': datetime.fromtimestamp(weather_data['timestamp']).strftime('%Y-%m-%d %H:%M:%S'),
-                'condition': f"{weather_data['condition']}",
+                'condition': weather_data['condition'],
                 'alerts': alerts,
                 'details': (
                     f"Current temperature: {weather_data['temperature']}°C "
@@ -149,16 +155,17 @@ def handler(event, context):
                     f"Humidity: {weather_data['humidity']}%"
                 )
             }
-            
+
             # Send to Discord
             send_discord_message(notification, os.environ['DISCORD_WEBHOOK_URL'])
             print(f"Discord notification sent for {weather_data['location']}")
-            
+
         except Exception as e:
             print(f"Error processing record: {str(e)}")
+            print(f"Record content: {record}")
             continue
-    
+
     return {
         'statusCode': 200,
-        'body': 'Processing completed successfully'
+        'body': 'Successfully processed records'
     }
