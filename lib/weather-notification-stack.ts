@@ -47,13 +47,6 @@ export class WeatherNotificationStack extends cdk.Stack {
         actions:["sqs:SendMessage"],
         resources: [weatherQueue.queueArn]
     }))
-
-    const weatherTopic = new sns.Topic(this, "WeatherTopic", {
-        topicName: "weather-topic",
-        displayName: "Weather Topic",
-        fifo: true,
-        contentBasedDeduplication: true
-    })
     
     const fetcherLambda = new lambda.Function(this, "FetcherWeatherLambda", {
         runtime: lambda.Runtime.PYTHON_3_12,
@@ -76,10 +69,6 @@ export class WeatherNotificationStack extends cdk.Stack {
             iam.ManagedPolicy.fromAwsManagedPolicyName("service-role/AWSLambdaBasicExecutionRole"),
         ]
     });
-    processorLambdaRole.addToPolicy(new iam.PolicyStatement({
-        actions: ["sns:Publish"],
-        resources: [weatherTopic.topicArn]
-    }));
 
     const processorLambda = new lambda.Function(this, "ProcessorWeatherLambda", {
         runtime: lambda.Runtime.PYTHON_3_12,
@@ -88,7 +77,6 @@ export class WeatherNotificationStack extends cdk.Stack {
         code: lambda.Code.fromAsset(path.join(__dirname, '../assets/lambda-weather-processor')),
         role: processorLambdaRole,
         environment: {
-            TOPIC_ARN: weatherTopic.topicArn,
             DISCORD_WEBHOOK_URL: ssm.StringParameter.valueForStringParameter(this, "/weather-notification/discord-webhook-url"),
         }
     })
