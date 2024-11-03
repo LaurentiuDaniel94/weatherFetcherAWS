@@ -92,7 +92,7 @@ export class WeatherNotificationStack extends cdk.Stack {
         'timestream:WriteRecords',
         'timestream:DescribeEndpoints'
     ],
-    resources: [weatherTable.attrArn]
+    resources: ['*']
   }));
 
     const processorLambda = new lambda.Function(this, "ProcessorWeatherLambda", {
