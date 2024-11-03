@@ -1,6 +1,5 @@
 import * as cdk from "aws-cdk-lib"
 import * as lambda from "aws-cdk-lib/aws-lambda"
-import * as sns from "aws-cdk-lib/aws-sns"
 import * as sqs from "aws-cdk-lib/aws-sqs"
 import * as events from "aws-cdk-lib/aws-events"
 import * as targets from "aws-cdk-lib/aws-events-targets"
@@ -9,12 +8,27 @@ import * as path from "path"
 import * as iam from "aws-cdk-lib/aws-iam"
 import { Duration } from "aws-cdk-lib"
 import { SqsEventSource } from "aws-cdk-lib/aws-lambda-event-sources"
+import * as timestream from 'aws-cdk-lib/aws-timestream';
+import * as grafana from 'aws-cdk-lib/aws-grafana';
 
 
 export class WeatherNotificationStack extends cdk.Stack {
   constructor(scope: cdk.App, id: string, props?: cdk.StackProps){
     super(scope, id, props);
 
+
+    const weatherDatabase = new timestream.CfnDatabase(this, "WeatherDatabase", {
+        databaseName: "weather-database"
+    })
+
+    const weatherTable = new timestream.CfnTable(this, "WeatherTable", {
+        databaseName: weatherDatabase.ref,
+        tableName: "weather-table",
+        retentionProperties: {
+            memoryStoreRetentionPeriodInHours: 24,
+            magneticStoreRetentionPeriodInDays: 7
+        }
+    })
 
     const openWeatherLambdaRole = new iam.Role(this, "OpenWeatherLambdaRole", {
         assumedBy: new iam.ServicePrincipal("lambda.amazonaws.com"),
@@ -52,6 +66,7 @@ export class WeatherNotificationStack extends cdk.Stack {
         runtime: lambda.Runtime.PYTHON_3_12,
         handler: "main.handler",
         timeout: cdk.Duration.seconds(30),
+        memorySize: 256,
         code: lambda.Code.fromAsset(path.join(__dirname, '../assets/lambda-weather-fetcher')),
         role: openWeatherLambdaRole,
         environment: {
@@ -67,16 +82,30 @@ export class WeatherNotificationStack extends cdk.Stack {
         assumedBy: new iam.ServicePrincipal("lambda.amazonaws.com"),
         managedPolicies: [
             iam.ManagedPolicy.fromAwsManagedPolicyName("service-role/AWSLambdaBasicExecutionRole"),
+            iam.ManagedPolicy.fromAwsManagedPolicyName("CloudWatchLogsFullAccess"),
         ]
     });
+
+   // Add Timestream permissions to processor Lambda
+    processorLambdaRole.addToPolicy(new iam.PolicyStatement({
+        actions: [
+        'timestream:WriteRecords',
+        'timestream:DescribeEndpoints'
+    ],
+    resources: [weatherTable.attrArn]
+  }));
+
 
     const processorLambda = new lambda.Function(this, "ProcessorWeatherLambda", {
         runtime: lambda.Runtime.PYTHON_3_12,
         handler: "main.handler",
         timeout: cdk.Duration.seconds(30),
+        memorySize: 256,
         code: lambda.Code.fromAsset(path.join(__dirname, '../assets/lambda-weather-processor')),
         role: processorLambdaRole,
         environment: {
+            TIMESTREAM_DATABASE: weatherDatabase.databaseName!,
+            TIMESTREAM_TABLE: weatherTable.tableName!,
             DISCORD_WEBHOOK_URL: ssm.StringParameter.valueForStringParameter(this, "/weather-notification/discord-webhook-url"),
         }
     })
@@ -90,5 +119,38 @@ export class WeatherNotificationStack extends cdk.Stack {
         schedule: events.Schedule.rate(Duration.hours(1)), // Runs every hour
         targets: [new targets.LambdaFunction(fetcherLambda)]
       });
+
+      const grafanaRole = new iam.Role(this, 'GrafanaTimeStreamRole', {
+        assumedBy: new iam.ServicePrincipal('grafana.amazonaws.com'),
+      });
+      
+      // Add Timestream read permissions to Grafana role
+      grafanaRole.addToPolicy(new iam.PolicyStatement({
+        actions: [
+          'timestream:DescribeEndpoints',
+          'timestream:SelectValues',
+          'timestream:DescribeTable',
+          'timestream:ListMeasures',
+          'timestream:ListDatabases',
+          'timestream:ListTables'
+        ],
+        resources: ['*']  // Or be more specific with your Timestream ARN
+      }));
+      
+    // Create Managed Grafana Workspace
+    const workspace = new grafana.CfnWorkspace(this, 'WeatherGrafana', {
+        accountAccessType: 'CURRENT_ACCOUNT',
+        authenticationProviders: ['AWS_IAM'],  // Using IAM authentication
+        permissionType: 'SERVICE_MANAGED',
+        roleArn: grafanaRole.roleArn,
+        name: 'weather-dashboard'
+  });
+
+    // Output the Grafana URL
+    // Add Grafana URL to stack outputs
+    new cdk.CfnOutput(this, 'GrafanaURL', {
+        value: `https://${workspace.attrEndpoint}`,
+        description: 'URL for Grafana workspace'
+  });
 }
     }
