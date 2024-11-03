@@ -1,6 +1,5 @@
 import * as cdk from "aws-cdk-lib"
 import * as lambda from "aws-cdk-lib/aws-lambda"
-import * as sns from "aws-cdk-lib/aws-sns"
 import * as sqs from "aws-cdk-lib/aws-sqs"
 import * as events from "aws-cdk-lib/aws-events"
 import * as targets from "aws-cdk-lib/aws-events-targets"
@@ -14,8 +13,7 @@ import { SqsEventSource } from "aws-cdk-lib/aws-lambda-event-sources"
 export class WeatherNotificationStack extends cdk.Stack {
   constructor(scope: cdk.App, id: string, props?: cdk.StackProps){
     super(scope, id, props);
-
-
+    
     const openWeatherLambdaRole = new iam.Role(this, "OpenWeatherLambdaRole", {
         assumedBy: new iam.ServicePrincipal("lambda.amazonaws.com"),
         managedPolicies: [
@@ -90,5 +88,5 @@ export class WeatherNotificationStack extends cdk.Stack {
         schedule: events.Schedule.rate(Duration.hours(1)), // Runs every hour
         targets: [new targets.LambdaFunction(fetcherLambda)]
       });
+  }
 }
-    }
